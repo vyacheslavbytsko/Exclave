@@ -357,6 +357,10 @@ fun parseClashProxy(proxy: Map<String, Any?>): List<AbstractBean> {
                 bean.realityShortId = it.getString("short-id")
             }
 
+            proxy.getString("client-fingerprint")?.also {
+                bean.realityFingerprint = it
+            }
+
             if (bean.type == "tcp" && bean.headerType != null && bean.headerType == "http") {
                 proxy.getObject("http-opts")?.also {
                     bean.path = it.getStringArray("path")?.joinToString("\n")
