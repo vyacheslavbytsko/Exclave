@@ -605,8 +605,12 @@ public abstract class StandardV2RayBean extends AbstractBean {
         if (bean.packetEncoding == null) {
             bean.packetEncoding = packetEncoding;
         }
-        bean.utlsFingerprint = utlsFingerprint;
-        bean.realityFingerprint = realityFingerprint;
+        if (bean.utlsFingerprint == null || bean.utlsFingerprint.isEmpty()) {
+            bean.utlsFingerprint = utlsFingerprint;
+        }
+        if (bean.realityFingerprint == null || bean.realityFingerprint.isEmpty()) {
+            bean.realityFingerprint = realityFingerprint;
+        }
         bean.realityDisableX25519Mlkem768 = realityDisableX25519Mlkem768;
         bean.hy2DownMbps = hy2DownMbps;
         bean.hy2UpMbps = hy2UpMbps;
