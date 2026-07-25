@@ -26,6 +26,9 @@ import io.nekohasekai.sagernet.fmt.trojan.TrojanBean
 import io.nekohasekai.sagernet.ktx.*
 import libexclavecore.Libexclavecore
 import java.util.Base64
+import kotlin.collections.filter
+import kotlin.collections.isNotEmpty
+import kotlin.text.isNotEmpty
 
 val supportedVmessMethod = arrayOf(
     "auto", "aes-128-gcm", "chacha20-poly1305", "none", "zero"
@@ -217,15 +220,17 @@ fun parseV2Ray(link: String): StandardV2RayBean {
                     bean.allowInsecure = true
                 }
             }
-            if (url.scheme == "vless" || url.scheme == "trojan") {
-                // Only parse ECH for shit VLESS or Trojan free nodes
-                url.queryParameter("ech")?.let {
-                    bean.echEnabled = true
-                    try {
-                        Base64.getDecoder().decode(it)
-                        bean.echConfig = it
-                    } catch (_: Exception) {}
-                }
+            url.queryParameter("vcn")?.takeIf { it.isNotEmpty() }?.let { vcn ->
+                bean.serverNameToVerify = vcn.split(",")
+                    .filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }
+                    ?.joinToString("\n")
+            }
+            url.queryParameter("ech")?.let {
+                bean.echEnabled = true
+                try {
+                    Base64.getDecoder().decode(it)
+                    bean.echConfig = it
+                } catch (_: Exception) {}
             }
         }
         "reality" -> {
@@ -559,7 +564,7 @@ private fun parseV2RayN(json: JsonObject): VMessBean {
     when (bean.type) {
         "tcp" -> {
             bean.host = host?.split(",")?.joinToString("\n") // "http(tcp)->host中间逗号(,)隔开"
-            bean.path = path?.split(",")?.joinToString("\n") // see v2rayN(G) source code
+            bean.path = path?.split(",")?.joinToString("\n") // See https://github.com/ExclaveNetwork/Exclave/issues/357
             type?.let {
                 if (it != "http" && it != "none") error("unsupported headerType")
                 bean.headerType = it
@@ -656,6 +661,11 @@ private fun parseV2RayN(json: JsonObject): VMessBean {
                     bean.allowInsecure = true
                 }
             }
+            json.getString("vcn")?.takeIf { it.isNotEmpty() }?.let { vcn ->
+                bean.serverNameToVerify = vcn.split(",")
+                    .filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }
+                    ?.joinToString("\n")
+            }
         }
         "reality" -> {
             error("v2rayN(G) style link lacks REALITY public key support and does not work at all.")
@@ -711,6 +721,9 @@ fun StandardV2RayBean.toUri(): String? {
         is VMessBean -> {
             builder.username = uuidOrGenerate(uuid)
             builder.addQueryParameter("encryption", encryption)
+            if (alterId > 0) {
+                error("unsupported vmess alterId")
+            }
         }
         is VLESSBean -> {
             builder.username = uuidOrGenerate(uuid)
@@ -754,6 +767,10 @@ fun StandardV2RayBean.toUri(): String? {
                 if (host.isNotEmpty()) {
                     builder.addQueryParameter("host", host.listByLineOrComma().joinToString(","))
                 }
+                // See https://github.com/ExclaveNetwork/Exclave/issues/357
+                /*if (path.isNotEmpty()) {
+                    builder.addQueryParameter("path", path.listByLineOrComma().joinToString(","))
+                }*/
             }
         }
         "kcp" -> {
@@ -918,14 +935,19 @@ fun StandardV2RayBean.toUri(): String? {
             }
             // as pinned certificate is not exportable, only add `allowInsecure=1` if pinned certificate is not used
             if (allowInsecure && pinnedPeerCertificateSha256.isEmpty() &&
-                pinnedPeerCertificatePublicKeySha256.isEmpty() && pinnedPeerCertificateChainSha256.isEmpty()) {
+                pinnedPeerCertificatePublicKeySha256.isEmpty() && pinnedPeerCertificateChainSha256.isEmpty() &&
+                serverNameToVerify.listByLineOrComma().isEmpty()) {
                 // bad format from where?
                 builder.addQueryParameter("allowInsecure", "1")
             }
             if (pinnedPeerCertificateSha256.isNotEmpty()) {
                 builder.addQueryParameter("pcs", pinnedPeerCertificateSha256.listByLineOrComma().joinToString(":"))
             }
-            
+            if (serverNameToVerify.isNotEmpty()) {
+                val serverNames = serverNameToVerify.listByLineOrComma()
+                if (serverNames.contains("")) error("serverNameToVerify contains empty value")
+                builder.addQueryParameter("vcn", serverNames.joinToString(","))
+            }
             if (this is VLESSBean && flow.isNotEmpty()) {
                 builder.addQueryParameter("flow", flow.removeSuffix("-udp443"))
             }
