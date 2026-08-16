@@ -48,6 +48,7 @@ import io.nekohasekai.sagernet.fmt.internal.BalancerBean
 import io.nekohasekai.sagernet.fmt.internal.ConfigBean
 import io.nekohasekai.sagernet.fmt.juicity.JuicityBean
 import io.nekohasekai.sagernet.fmt.mieru.MieruBean
+import io.nekohasekai.sagernet.fmt.shadowquic.ShadowQUICBean
 import io.nekohasekai.sagernet.fmt.shadowsocks.ShadowsocksBean
 import io.nekohasekai.sagernet.fmt.shadowsocksr.ShadowsocksRBean
 import io.nekohasekai.sagernet.fmt.socks.SOCKSBean
@@ -528,35 +529,25 @@ fun buildV2RayConfig(
                     // but this is not the main function of this software, just keep it broken
                     if (bean.security == "none" && bean.host.isNotEmpty()) {
                         val host = try {
-                            val u = Libexclavecore.newURL("placeholder").apply {
-                                rawHost = if (Libexclavecore.isIPv6(bean.host)) "[${bean.host}]" else bean.host
-                            }.string
-                            Libexclavecore.parseURL(u).host
+                            Libexclavecore.splitHostPort(bean.host).host
                         } catch (_: Exception) {
                             bean.host
                         }
-                        wsRules[host] = RoutingObject.RuleObject().apply {
-                            type = "field"
-                            outboundTag = TAG_DIRECT
-                            port = bean.serverPort.toString()
-                            if (Libexclavecore.isIP(host)) {
-                                ip = listOf(host)
-                                if (DataStore.domainStrategy != "AsIs") {
-                                    skipDomain = true
-                                }
-                            } else {
+                        if (host.isNotEmpty() && !Libexclavecore.isIP(host)) {
+                            wsRules[host] = RoutingObject.RuleObject().apply {
+                                type = "field"
+                                outboundTag = TAG_DIRECT
+                                port = bean.serverPort.toString()
                                 domains = listOf(host)
                             }
                         }
                     }
-                    if (bean.security != "none" && bean.sni.isNotEmpty()) {
+                    if (bean.security != "none" && bean.sni.isNotEmpty() && !Libexclavecore.isIP(bean.sni)) {
                         wsRules[bean.sni] = RoutingObject.RuleObject().apply {
                             type = "field"
                             outboundTag = TAG_DIRECT
                             port = bean.serverPort.toString()
-                            if (!Libexclavecore.isIP(bean.sni)) {
-                                domains = listOf(bean.sni)
-                            }
+                            domains = listOf(bean.sni)
                         }
                     }
                     if (bean.serverAddress.isNotEmpty()) {
@@ -659,7 +650,7 @@ fun buildV2RayConfig(
                                 if (proxyEntity.naiveBean != null && proxyEntity.naiveBean!!.singUoT && DataStore.experimentalFlagsProperties.getBooleanProperty( "singuot")) {
                                     uot = true
                                 }
-                                if (proxyEntity.naiveBean != null || proxyEntity.shadowquicBean != null) {
+                                if (proxyEntity.naiveBean != null) {
                                     directNeedsInterruption = true
                                 }
                             })
@@ -1183,8 +1174,15 @@ fun buildV2RayConfig(
                                         }
                                         "hysteria2" -> {
                                             hy2Settings = Hysteria2Object().apply {
-                                                // V2Ray transport is TCP only so it is safe to omit MaxDatagramFrameSize.
-                                                omitMaxDatagramFrameSize = true
+                                                if (bean.hy2ChromeParrot) {
+                                                    // Chrome always advertises QUIC datagram support.
+                                                    // omitMaxDatagramFrameSize is in fact always disabled regardless of the value.
+                                                    // Do not set omitMaxDatagramFrameSize to avoid user confusion.
+                                                    chromeParrot = true
+                                                } else {
+                                                    // V2Ray transport is TCP only so it is safe to omit MaxDatagramFrameSize.
+                                                    omitMaxDatagramFrameSize = true
+                                                }
                                                 if (bean.hy2Password.isNotEmpty()) {
                                                     password = bean.hy2Password
                                                 }
@@ -1346,7 +1344,12 @@ fun buildV2RayConfig(
                                     security = "tls"
                                     hy2Settings = Hysteria2Object().apply {
                                         use_udp_extension = true
-                                        if (DataStore.hysteria2OmitMaxDatagramFrameSize || bean.omitMaxDatagramFrameSize) {
+                                        if (bean.chromeParrot) {
+                                            // Chrome always advertise QUIC datagram support.
+                                            // omitMaxDatagramFrameSize is in fact always disabled regardless of the value.
+                                            // Do not set omitMaxDatagramFrameSize to avoid user confusion.
+                                            chromeParrot = true
+                                        } else if (DataStore.hysteria2OmitMaxDatagramFrameSize || bean.omitMaxDatagramFrameSize) {
                                             omitMaxDatagramFrameSize = true
                                         }
                                         if (bean.auth.isNotEmpty()) {
@@ -1893,6 +1896,23 @@ fun buildV2RayConfig(
                                         }
                                     }
                                 }
+                            } else if (bean is ShadowQUICBean) {
+                                protocol = "shadowquic"
+                                settings = LazyOutboundConfigurationObject(this, V2RayConfig.ShadowQUICOutboundConfigurationObject().apply {
+                                    address = bean.serverAddress
+                                    port = bean.serverPort
+                                    username = bean.username
+                                    password = bean.password
+                                    congestionControl = bean.congestionControl
+                                    udpOverStream = udpOverStream
+                                    zeroRTTHandshake = zeroRTTHandshake
+                                    if (bean.sni.isNotEmpty()) {
+                                        serverName = bean.sni
+                                    }
+                                    if (bean.alpn.listByLineOrComma().isNotEmpty()) {
+                                        alpn = bean.alpn.listByLineOrComma()
+                                    }
+                                })
                             }
                             if (bean is StandardV2RayBean && bean.mux) {
                                 mux = OutboundObject.MuxObject().apply {

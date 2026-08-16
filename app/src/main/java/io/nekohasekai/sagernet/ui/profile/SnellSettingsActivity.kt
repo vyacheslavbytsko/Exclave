@@ -2,6 +2,7 @@ package io.nekohasekai.sagernet.ui.profile
 
 import android.os.Bundle
 import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
 import io.nekohasekai.sagernet.Key
@@ -11,7 +12,6 @@ import io.nekohasekai.sagernet.database.preference.EditTextPreferenceModifiers
 import io.nekohasekai.sagernet.fmt.snell.SnellBean
 import io.nekohasekai.sagernet.ktx.getBooleanProperty
 import io.nekohasekai.sagernet.ktx.unwrapIDN
-import io.nekohasekai.sagernet.widget.SimpleMenuPreference
 
 class SnellSettingsActivity : ProfileSettingsActivity<SnellBean>() {
 
@@ -71,20 +71,26 @@ class SnellSettingsActivity : ProfileSettingsActivity<SnellBean>() {
         }
         findPreference<PreferenceCategory>(Key.SERVER_SING_SNELL_CATEGORY)!!.isVisible =
             DataStore.experimentalFlagsProperties.getBooleanProperty("singSnellUserKey")
-        val versionPref = findPreference<SimpleMenuPreference>(Key.SERVER_SNELL_VERSION)!!
-        val modePref = findPreference<SimpleMenuPreference>(Key.SERVER_SNELL_MODE)!!
-        val obfsPref = findPreference<SimpleMenuPreference>(Key.SERVER_SNELL_OBFS_MODE)!!
+        val versionPref = findPreference<ListPreference>(Key.SERVER_SNELL_VERSION)!!
+        val modePref = findPreference<ListPreference>(Key.SERVER_SNELL_MODE)!!
+        val obfsPref = findPreference<ListPreference>(Key.SERVER_SNELL_OBFS_MODE)!!
         val obfsHostPref = findPreference<EditTextPreference>(Key.SERVER_SNELL_OBFS_HOST)!!
+        obfsHostPref.isVisible = obfsPref.value != "none"
         fun updateVisibility(v: Int) {
             val isV6 = v == 6
             modePref.isVisible = isV6
             obfsPref.isVisible = !isV6
-            obfsHostPref.isVisible = !isV6
+            obfsHostPref.isVisible = !isV6 && obfsPref.value != "none"
         }
         val cur = versionPref.value.toInt()
         updateVisibility(cur)
         versionPref.setOnPreferenceChangeListener { _, newValue ->
             updateVisibility((newValue as String).toInt())
+            true
+        }
+        obfsPref.setOnPreferenceChangeListener { _, newValue ->
+            newValue to String
+            obfsHostPref.isVisible = newValue != "none"
             true
         }
     }

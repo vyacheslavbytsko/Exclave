@@ -23,7 +23,6 @@ package io.nekohasekai.sagernet.group
 import com.github.shadowsocks.plugin.PluginOptions
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
-import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.fmt.AbstractBean
 import io.nekohasekai.sagernet.fmt.anytls.AnyTLSBean
 import io.nekohasekai.sagernet.fmt.http.HttpBean
@@ -560,6 +559,19 @@ fun parseClashProxy(proxy: Map<String, Any?>): List<AbstractBean> {
                     }
                 }
             }
+
+            if (bean.security == "reality") {
+                when (bean.type) {
+                    "tcp", "http", "grpc", "splithttp" -> {}
+                    else -> return listOf()
+                }
+            }
+
+            if (bean is VLESSBean && bean.security != "none" && bean.flow == "xtls-rprx-vision-udp443"
+                && bean.type != "tcp" && bean.encryption == "none") {
+                return listOf()
+            }
+
             return listOf(bean)
         }
         "ssr" -> {
@@ -812,7 +824,7 @@ fun parseClashProxy(proxy: Map<String, Any?>): List<AbstractBean> {
                          else -> return listOf()
                     }
                 }
-                reuse = proxy.getBoolean("reuse")
+                reuse = proxy.getBoolean("reuse") ?: false
                 name = proxy.getString("name")
             })
         }
@@ -956,16 +968,14 @@ fun parseClashProxy(proxy: Map<String, Any?>): List<AbstractBean> {
             return beanList
         }
         "shadowquic" -> {
-            if (!DataStore.experimentalFlagsProperties.getBooleanProperty("shadowquic")) {
-                return listOf()
-            }
             return listOf(ShadowQUICBean().apply {
                 serverAddress = proxy.getString("server") ?: return listOf()
                 serverPort = proxy.getInt("port")?.takeIf { it > 0 } ?: return listOf()
                 username = proxy.getString("username")
                 password = proxy.getString("password")
                 sni = proxy.getString("sni")
-                alpn = proxy.getStringArray("alpn")?.joinToString("\n")
+                // https://github.com/MetaCubeX/mihomo/blob/8453e589df956192fbdd713ad1e1c239d3d805ac/adapter/outbound/shadowquic.go#L99-L103
+                alpn = proxy.getStringArray("alpn")?.joinToString("\n") ?: "h3"
                 udpOverStream = proxy.getBoolean("udp-over-stream")
                 zeroRTT = proxy.getBoolean("zero-rtt")
                 name = proxy.getString("name")
